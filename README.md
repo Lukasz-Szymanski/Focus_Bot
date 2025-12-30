@@ -13,10 +13,14 @@ FocusBot acts as a "Capture Tool" for your productivity system. Instead of openi
 ## 🚀 Features
 
 -   **📝 Quick Capture:** Add tasks and ideas via simple commands.
+-   **✏️ Edit & Delete:** Full control over your entries - edit or delete tasks and ideas.
+-   **🗑️ Batch Delete:** Remove multiple items at once (e.g., `1,3,5`).
+-   **📜 History:** View completed tasks for motivation.
 -   **🇵🇱 Polish Language Support:** Handles special characters gracefully (e.g., `/pomysł`).
 -   **🛡️ Private & Secure:** Uses a whitelist (`MY_CHAT_ID`) to ignore messages from unauthorized users.
 -   **💾 Local Database:** All data is stored in a lightweight `sqlite3` database (`focus_bot.db`).
 -   **📋 Instant Overview:** View all active tasks and ideas with a single command.
+-   **☀️ Morning Briefing:** Automatic daily report at 08:00 with all active tasks.
 
 ## 🛠️ Prerequisites
 
@@ -53,12 +57,15 @@ FocusBot acts as a "Capture Tool" for your productivity system. Instead of openi
 
 | Command | Description | Example |
 | :--- | :--- | :--- |
-| `/zadanie <text>` | Adds a new task. Can be used without text for interactive mode. | `/zadanie Buy coffee` |
-| `/zrobione <id>` | Marks a task as completed. Can be used without ID for interactive mode. | `/zrobione 1` |
-| `/pomysl <text>` | Saves an idea. Can be used without text for interactive mode. | `/pomysl New app logic` |
+| `/zadanie <text>` | Adds a new task. Interactive mode if no text. | `/zadanie Buy coffee` |
+| `/zrobione <id>` | Marks a task as completed. | `/zrobione 1` |
+| `/pomysl <text>` | Saves an idea. | `/pomysl New app logic` |
 | `/pomysł <text>` | Alias for idea (supports 'ł'). | `/pomysł Nowy projekt` |
-| `/lista` | Shows all active tasks with IDs. | `/lista` |
-| `/start` | checks connection and displays interactive UI buttons. | `/start` |
+| `/lista` | Shows all active tasks and ideas with IDs. | `/lista` |
+| `/usun` | Deletes task or idea. Supports batch: `1,3,5` | `/usun z 1` or `/usun p 2` |
+| `/edytuj` | Edits task or idea content. | `/edytuj` |
+| `/historia` | Shows last 20 completed tasks. | `/historia` |
+| `/start` | Welcome message, removes old keyboard. | `/start` |
 
 ## 📂 Project Structure
 
@@ -78,6 +85,15 @@ focus_bot/
 
 <details>
 <summary><strong>Click to expand version history</strong></summary>
+
+### v0.6.0 (2025-12-30)
+*   **feat(core):** Implemented `/usun` command to delete tasks and ideas.
+*   **feat(core):** Implemented `/edytuj` command to edit tasks and ideas.
+*   **feat(core):** Implemented `/historia` command to view completed tasks.
+*   **feat(ux):** Batch delete support - remove multiple items at once (`1,3,5`).
+*   **feat(ux):** Show list before delete/edit for better context.
+*   **feat(ux):** Removed Reply Keyboard in favor of cleaner `/` command menu.
+*   **feat(db):** Added `delete_task`, `delete_idea`, `update_task`, `update_idea`, `get_completed_tasks`, `get_task_by_id`, `get_idea_by_id` functions.
 
 ### v0.5.0 (2025-12-17)
 *   **feat(ui):** Implemented **Conversational Mode** (State Machine). If a command is sent without parameters, the bot asks for input.

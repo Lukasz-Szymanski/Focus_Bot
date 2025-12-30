@@ -66,11 +66,74 @@ def mark_task_done(task_id):
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('UPDATE tasks SET is_done = 1 WHERE id = ?', (task_id,))
-    # Sprawdzamy, czy coś faktycznie zostało zmienione
     rows_affected = c.rowcount
     conn.commit()
     conn.close()
     return rows_affected > 0
+
+def delete_task(task_id):
+    """Usuwa zadanie z bazy danych."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
+    rows_affected = c.rowcount
+    conn.commit()
+    conn.close()
+    return rows_affected > 0
+
+def delete_idea(idea_id):
+    """Usuwa pomysł z bazy danych."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('DELETE FROM ideas WHERE id = ?', (idea_id,))
+    rows_affected = c.rowcount
+    conn.commit()
+    conn.close()
+    return rows_affected > 0
+
+def update_task(task_id, new_content):
+    """Aktualizuje treść zadania."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('UPDATE tasks SET content = ? WHERE id = ?', (new_content, task_id))
+    rows_affected = c.rowcount
+    conn.commit()
+    conn.close()
+    return rows_affected > 0
+
+def update_idea(idea_id, new_content):
+    """Aktualizuje treść pomysłu."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('UPDATE ideas SET content = ? WHERE id = ?', (new_content, idea_id))
+    rows_affected = c.rowcount
+    conn.commit()
+    conn.close()
+    return rows_affected > 0
+
+def get_completed_tasks(limit=20):
+    """Pobiera ukończone zadania (historia)."""
+    conn = get_db_connection()
+    tasks = conn.execute(
+        'SELECT * FROM tasks WHERE is_done = 1 ORDER BY created_at DESC LIMIT ?',
+        (limit,)
+    ).fetchall()
+    conn.close()
+    return tasks
+
+def get_task_by_id(task_id):
+    """Pobiera pojedyncze zadanie po ID."""
+    conn = get_db_connection()
+    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+    conn.close()
+    return task
+
+def get_idea_by_id(idea_id):
+    """Pobiera pojedynczy pomysł po ID."""
+    conn = get_db_connection()
+    idea = conn.execute('SELECT * FROM ideas WHERE id = ?', (idea_id,)).fetchone()
+    conn.close()
+    return idea
 
 # Inicjalizacja przy imporcie (bezpieczne, jeśli plik jest zaimportowany)
 if __name__ == "__main__":
