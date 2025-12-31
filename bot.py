@@ -1,6 +1,8 @@
 import os
+import re
 import logging
 import datetime
+from datetime import timedelta
 from dotenv import load_dotenv
 from telegram import Update, BotCommand, ReplyKeyboardRemove
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters, Application
@@ -22,6 +24,7 @@ STATE_WAITING_DELETE_ID = "WAITING_DELETE_ID"
 STATE_WAITING_EDIT_TYPE = "WAITING_EDIT_TYPE"
 STATE_WAITING_EDIT_ID = "WAITING_EDIT_ID"
 STATE_WAITING_EDIT_CONTENT = "WAITING_EDIT_CONTENT"
+STATE_WAITING_REMINDER = "WAITING_REMINDER"
 
 # Inicjalizacja bazy danych przy starcie
 db.init_db()
@@ -38,6 +41,22 @@ async def security_check(update: Update) -> bool:
         return False
     return True
 
+def format_task_simple(task) -> str:
+    """Formatuje zadanie z uwzględnieniem priorytetu i kategorii."""
+    priority = task['priority'] if 'priority' in task.keys() else 0
+    category = task['category'] if 'category' in task.keys() and task['category'] else None
+    cat_suffix = f" `#{category}`" if category else ""
+
+    if priority:
+        return f"🔴 `{task['id']}`. **{task['content']}**{cat_suffix}"
+    return f"`{task['id']}`. {task['content']}{cat_suffix}"
+
+def format_idea_simple(idea) -> str:
+    """Formatuje pomysł z uwzględnieniem kategorii."""
+    category = idea['category'] if 'category' in idea.keys() and idea['category'] else None
+    cat_suffix = f" `#{category}`" if category else ""
+    return f"`{idea['id']}`. {idea['content']}{cat_suffix}"
+
 async def morning_briefing(context: ContextTypes.DEFAULT_TYPE):
     tasks = db.get_active_tasks()
     if not tasks:
@@ -45,10 +64,18 @@ async def morning_briefing(context: ContextTypes.DEFAULT_TYPE):
     else:
         message = f"☀️ **PORANNY RAPORT**\n\nMasz {len(tasks)} zadań:\n"
         for t in tasks:
-            message += f"`{t['id']}`. {t['content']}\n"
+            message += format_task_simple(t) + "\n"
         message += "\nUżyj `/zrobione <nr>`, aby odhaczyć."
-    
+
     await context.bot.send_message(chat_id=MY_CHAT_ID, text=message, parse_mode="Markdown")
+
+async def check_reminders(context: ContextTypes.DEFAULT_TYPE):
+    """Job sprawdzający i wysyłający przypomnienia."""
+    reminders = db.get_pending_reminders()
+    for r in reminders:
+        message = f"⏰ **PRZYPOMNIENIE**\n\n{r['content']}"
+        await context.bot.send_message(chat_id=MY_CHAT_ID, text=message, parse_mode="Markdown")
+        db.mark_reminder_sent(r['id'])
 
 async def post_init(application: Application):
     await application.bot.set_my_commands([
@@ -59,12 +86,16 @@ async def post_init(application: Application):
         BotCommand("usun", "Usuń zadanie lub pomysł"),
         BotCommand("edytuj", "Edytuj zadanie lub pomysł"),
         BotCommand("historia", "Pokaż ukończone zadania"),
+        BotCommand("przypomnij", "Ustaw przypomnienie"),
+        BotCommand("przypomnienia", "Pokaż aktywne przypomnienia"),
         BotCommand("start", "Panel startowy")
     ])
-    
+
     if application.job_queue:
         t = datetime.time(8, 00)
         application.job_queue.run_daily(morning_briefing, t, chat_id=MY_CHAT_ID)
+        # Sprawdzaj przypomnienia co 30 sekund
+        application.job_queue.run_repeating(check_reminders, interval=30, first=5)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await security_check(update): return
@@ -90,31 +121,156 @@ def extract_content(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
             return parts[1]
     return ''
 
+def parse_priority(content: str) -> tuple[str, int]:
+    """Parsuje priorytet z treści zadania.
+
+    '! Zapłacić podatki' -> ('Zapłacić podatki', 1)
+    'Kupić mleko' -> ('Kupić mleko', 0)
+    """
+    content = content.strip()
+    if content.startswith('!'):
+        return content[1:].strip(), 1
+    return content, 0
+
+def parse_category(content: str) -> tuple[str, str | None]:
+    """Parsuje kategorię (hashtag) z treści.
+
+    'Kupić karmę #dom' -> ('Kupić karmę', 'dom')
+    'Kupić mleko' -> ('Kupić mleko', None)
+    """
+    match = re.search(r'#(\w+)', content)
+    if match:
+        category = match.group(1).lower()
+        # Usuń hashtag z treści
+        clean_content = re.sub(r'\s*#\w+', '', content).strip()
+        return clean_content, category
+    return content, None
+
+def parse_reminder_time(text: str) -> tuple[datetime.datetime | None, str]:
+    """Parsuje czas przypomnienia z tekstu.
+
+    Obsługiwane formaty:
+    - '15:00 Zadzwonić' -> (datetime z godziną 15:00, 'Zadzwonić')
+    - 'za 30m Sprawdzić' -> (datetime za 30 minut, 'Sprawdzić')
+    - 'za 2h Spotkanie' -> (datetime za 2 godziny, 'Spotkanie')
+    - 'za 1d Raport' -> (datetime za 1 dzień, 'Raport')
+    """
+    text = text.strip()
+    now = datetime.datetime.now()
+
+    # Format: "za Xm/h/d treść"
+    relative_match = re.match(r'^za\s+(\d+)\s*(m|min|h|g|d|dni?)\s+(.+)$', text, re.IGNORECASE)
+    if relative_match:
+        amount = int(relative_match.group(1))
+        unit = relative_match.group(2).lower()
+        content = relative_match.group(3).strip()
+
+        if unit in ('m', 'min'):
+            remind_at = now + timedelta(minutes=amount)
+        elif unit in ('h', 'g'):
+            remind_at = now + timedelta(hours=amount)
+        elif unit in ('d', 'dn', 'dni'):
+            remind_at = now + timedelta(days=amount)
+        else:
+            return None, text
+
+        return remind_at, content
+
+    # Format: "HH:MM treść"
+    time_match = re.match(r'^(\d{1,2}):(\d{2})\s+(.+)$', text)
+    if time_match:
+        hour = int(time_match.group(1))
+        minute = int(time_match.group(2))
+        content = time_match.group(3).strip()
+
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            remind_at = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            # Jeśli godzina już minęła, ustaw na jutro
+            if remind_at <= now:
+                remind_at += timedelta(days=1)
+            return remind_at, content
+
+    return None, text
+
+# --- Funkcje pomocnicze (DRY) ---
+
+def save_task(content: str) -> tuple[str, str]:
+    """Parsuje i zapisuje zadanie. Zwraca (prefix, suffix) do odpowiedzi."""
+    task_content, priority = parse_priority(content)
+    task_content, category = parse_category(task_content)
+    db.add_task(task_content, priority, category)
+    prefix = "🔴 PILNE: " if priority else "✅ Dodano: "
+    suffix = f" `#{category}`" if category else ""
+    return f"{prefix}{task_content}{suffix}"
+
+def save_idea(content: str) -> str:
+    """Parsuje i zapisuje pomysł. Zwraca tekst odpowiedzi."""
+    idea_content, category = parse_category(content)
+    db.add_idea(idea_content, category)
+    suffix = f" `#{category}`" if category else ""
+    return f"💡 Zapisano: {idea_content}{suffix}"
+
+def save_reminder(content: str) -> tuple[bool, str]:
+    """Parsuje i zapisuje przypomnienie. Zwraca (sukces, tekst odpowiedzi)."""
+    remind_at, reminder_content = parse_reminder_time(content)
+    if remind_at:
+        db.add_reminder(reminder_content, remind_at)
+        time_str = remind_at.strftime("%H:%M")
+        date_str = remind_at.strftime("%d.%m")
+        return True, f"⏰ Przypomnienie ustawione!\n\n📝 {reminder_content}\n🕐 {time_str} ({date_str})"
+    return False, (
+        "⚠️ Nie rozpoznałem formatu czasu.\n\n"
+        "Użyj:\n"
+        "• `15:00 Zadzwonić do lekarza`\n"
+        "• `za 30m Sprawdzić pranie`\n"
+        "• `za 2h Spotkanie`"
+    )
+
+def build_list_response(header: str, tasks: list, ideas: list, show_prompt: bool = False) -> str:
+    """Buduje odpowiedź z listą zadań i pomysłów."""
+    response = f"{header}\n\n"
+    response += "📌 **ZADANIA:**\n"
+    if tasks:
+        for t in tasks:
+            response += format_task_simple(t) + "\n"
+    else:
+        response += "(pusto)\n"
+
+    response += "\n💡 **POMYSŁY:**\n"
+    if ideas:
+        for i in ideas:
+            response += format_idea_simple(i) + "\n"
+    else:
+        response += "(pusto)\n"
+
+    if show_prompt:
+        response += "\n➡️ Wpisz `z` (zadanie) lub `p` (pomysł):"
+
+    return response
+
 async def add_task_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await security_check(update): return
     content = extract_content(update, context)
-    
+
     if content:
-        # Jeśli podano treść od razu (/zadanie Mleko)
-        db.add_task(content)
-        await update.message.reply_text(f"✅ Dodano: {content}")
+        response = save_task(content)
+        await update.message.reply_text(response, parse_mode="Markdown")
         context.user_data['state'] = STATE_IDLE
     else:
-        # Jeśli kliknięto sam przycisk -> pytamy o treść
         context.user_data['state'] = STATE_WAITING_TASK
-        await update.message.reply_text("✍️ Napisz treść zadania:")
+        await update.message.reply_text("✍️ Napisz treść zadania:\n_(Dodaj `!` = PILNE, `#tag` = kategoria)_", parse_mode="Markdown")
 
 async def add_idea_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await security_check(update): return
     content = extract_content(update, context)
-    
+
     if content:
-        db.add_idea(content)
-        await update.message.reply_text(f"💡 Zapisano: {content}")
+        response = save_idea(content)
+        await update.message.reply_text(response, parse_mode="Markdown")
         context.user_data['state'] = STATE_IDLE
     else:
         context.user_data['state'] = STATE_WAITING_IDEA
-        await update.message.reply_text("🧠 Napisz swój pomysł:")
+        await update.message.reply_text("🧠 Napisz swój pomysł:\n_(Dodaj `#tag` = kategoria)_", parse_mode="Markdown")
 
 async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await security_check(update): return
@@ -148,13 +304,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if state == STATE_WAITING_TASK:
-        db.add_task(text)
-        await update.message.reply_text(f"✅ Dodano: {text}")
+        response = save_task(text)
+        await update.message.reply_text(response, parse_mode="Markdown")
         context.user_data['state'] = STATE_IDLE
 
     elif state == STATE_WAITING_IDEA:
-        db.add_idea(text)
-        await update.message.reply_text(f"💡 Zapisano: {text}")
+        response = save_idea(text)
+        await update.message.reply_text(response, parse_mode="Markdown")
         context.user_data['state'] = STATE_IDLE
 
     elif state == STATE_WAITING_DONE_ID:
@@ -281,6 +437,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ Wystąpił błąd podczas edycji.")
         context.user_data['state'] = STATE_IDLE
 
+    elif state == STATE_WAITING_REMINDER:
+        _, response = save_reminder(text)
+        await update.message.reply_text(response, parse_mode="Markdown")
+        context.user_data['state'] = STATE_IDLE
+
     else:
         await update.message.reply_text("🤔 Nie wiem co z tym zrobić. Wybierz opcję z menu.")
 
@@ -288,24 +449,26 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await security_check(update): return
     context.user_data['state'] = STATE_IDLE
 
-    tasks = db.get_active_tasks()
-    ideas = db.get_ideas()
+    # Sprawdź czy filtrujemy po kategorii
+    content = extract_content(update, context)
+    category = None
+    if content:
+        _, category = parse_category(content)
+        if not category and content.startswith('#'):
+            category = content[1:].lower().strip()
 
-    response = "📋 **CENTRUM DOWODZENIA**\n\n"
-    response += "📌 **ZADANIA:**\n"
-    if tasks:
-        for t in tasks:
-            response += f"`{t['id']}`. {t['content']}\n"
+    tasks = db.get_active_tasks(category)
+    ideas = db.get_ideas(category)
+
+    if category:
+        header = f"📋 **FILTR: #{category}**"
     else:
-        response += "(pusto)\n"
+        header = "📋 **CENTRUM DOWODZENIA**"
+        categories = db.get_all_categories()
+        if categories:
+            header += f"\n\n🏷️ Kategorie: {', '.join([f'`#{c}`' for c in categories])}"
 
-    response += "\n💡 **POMYSŁY:**\n"
-    if ideas:
-        for i in ideas:
-            response += f"`{i['id']}`. {i['content']}\n"
-    else:
-        response += "(pusto)\n"
-
+    response = build_list_response(header, tasks, ideas)
     await update.message.reply_text(response, parse_mode="Markdown")
 
 async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -318,43 +481,20 @@ async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             item_id = int(context.args[1])
             if item_type in ['z', 'zadanie']:
                 success = db.delete_task(item_id)
-                if success:
-                    await update.message.reply_text(f"🗑️ Zadanie #{item_id} usunięte.")
-                else:
-                    await update.message.reply_text(f"❌ Nie znaleziono zadania #{item_id}.")
+                msg = f"🗑️ Zadanie #{item_id} usunięte." if success else f"❌ Nie znaleziono zadania #{item_id}."
             elif item_type in ['p', 'pomysl', 'pomysł']:
                 success = db.delete_idea(item_id)
-                if success:
-                    await update.message.reply_text(f"🗑️ Pomysł #{item_id} usunięty.")
-                else:
-                    await update.message.reply_text(f"❌ Nie znaleziono pomysłu #{item_id}.")
+                msg = f"🗑️ Pomysł #{item_id} usunięty." if success else f"❌ Nie znaleziono pomysłu #{item_id}."
             else:
-                await update.message.reply_text("⚠️ Użyj: `/usun z <nr>` lub `/usun p <nr>`", parse_mode="Markdown")
+                msg = "⚠️ Użyj: `/usun z <nr>` lub `/usun p <nr>`"
+            await update.message.reply_text(msg, parse_mode="Markdown")
         except ValueError:
             await update.message.reply_text("⚠️ Numer musi być cyfrą.")
         context.user_data['state'] = STATE_IDLE
     else:
-        # Wyświetl listę przed pytaniem
         tasks = db.get_active_tasks()
         ideas = db.get_ideas()
-
-        response = "🗑️ **CO CHCESZ USUNĄĆ?**\n\n"
-        response += "📌 **ZADANIA:**\n"
-        if tasks:
-            for t in tasks:
-                response += f"`{t['id']}`. {t['content']}\n"
-        else:
-            response += "(pusto)\n"
-
-        response += "\n💡 **POMYSŁY:**\n"
-        if ideas:
-            for i in ideas:
-                response += f"`{i['id']}`. {i['content']}\n"
-        else:
-            response += "(pusto)\n"
-
-        response += "\n➡️ Wpisz `z` (zadanie) lub `p` (pomysł):"
-
+        response = build_list_response("🗑️ **CO CHCESZ USUNĄĆ?**", tasks, ideas, show_prompt=True)
         context.user_data['state'] = STATE_WAITING_DELETE_TYPE
         await update.message.reply_text(response, parse_mode="Markdown")
 
@@ -362,27 +502,9 @@ async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Komenda /edytuj - edytuje zadanie lub pomysł."""
     if not await security_check(update): return
 
-    # Wyświetl listę przed pytaniem
     tasks = db.get_active_tasks()
     ideas = db.get_ideas()
-
-    response = "✏️ **CO CHCESZ EDYTOWAĆ?**\n\n"
-    response += "📌 **ZADANIA:**\n"
-    if tasks:
-        for t in tasks:
-            response += f"`{t['id']}`. {t['content']}\n"
-    else:
-        response += "(pusto)\n"
-
-    response += "\n💡 **POMYSŁY:**\n"
-    if ideas:
-        for i in ideas:
-            response += f"`{i['id']}`. {i['content']}\n"
-    else:
-        response += "(pusto)\n"
-
-    response += "\n➡️ Wpisz `z` (zadanie) lub `p` (pomysł):"
-
+    response = build_list_response("✏️ **CO CHCESZ EDYTOWAĆ?**", tasks, ideas, show_prompt=True)
     context.user_data['state'] = STATE_WAITING_EDIT_TYPE
     await update.message.reply_text(response, parse_mode="Markdown")
 
@@ -403,11 +525,53 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(response, parse_mode="Markdown")
 
+async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Komenda /przypomnij - ustawia przypomnienie."""
+    if not await security_check(update): return
+
+    content = extract_content(update, context)
+
+    if content:
+        _, response = save_reminder(content)
+        await update.message.reply_text(response, parse_mode="Markdown")
+        context.user_data['state'] = STATE_IDLE
+    else:
+        context.user_data['state'] = STATE_WAITING_REMINDER
+        await update.message.reply_text(
+            "⏰ Ustaw przypomnienie:\n\n"
+            "Formaty:\n"
+            "• `15:00 Zadzwonić do lekarza`\n"
+            "• `za 30m Sprawdzić pranie`\n"
+            "• `za 2h Spotkanie`\n"
+            "• `za 1d Raport`",
+            parse_mode="Markdown"
+        )
+
+async def reminders_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Komenda /przypomnienia - pokazuje aktywne przypomnienia."""
+    if not await security_check(update): return
+    context.user_data['state'] = STATE_IDLE
+
+    reminders = db.get_active_reminders()
+
+    if not reminders:
+        await update.message.reply_text("⏰ Brak aktywnych przypomnień.")
+        return
+
+    response = "⏰ **AKTYWNE PRZYPOMNIENIA**\n\n"
+    for r in reminders:
+        remind_at = datetime.datetime.fromisoformat(r['remind_at'])
+        time_str = remind_at.strftime("%H:%M")
+        date_str = remind_at.strftime("%d.%m")
+        response += f"`{r['id']}`. {r['content']} — 🕐 {time_str} ({date_str})\n"
+
+    await update.message.reply_text(response, parse_mode="Markdown")
+
 if __name__ == '__main__':
     if not TOKEN or not MY_CHAT_ID:
         print("BŁĄD: Uzupełnij .env")
     else:
-        print("FocusBot v5 (z edycją i usuwaniem) nasłuchuje...")
+        print("FocusBot v7 (z przypomnieniami) nasłuchuje...")
         app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
 
         app.add_handler(CommandHandler('start', start))
@@ -418,6 +582,8 @@ if __name__ == '__main__':
         app.add_handler(CommandHandler('usun', delete_command))
         app.add_handler(CommandHandler('edytuj', edit_command))
         app.add_handler(CommandHandler('historia', history_command))
+        app.add_handler(CommandHandler('przypomnij', remind_command))
+        app.add_handler(CommandHandler('przypomnienia', reminders_list_command))
 
         # Obsługa polskiego /pomysł
         app.add_handler(MessageHandler(filters.Regex(r'^/pomysł'), add_idea_command))

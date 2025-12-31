@@ -13,6 +13,8 @@ FocusBot acts as a "Capture Tool" for your productivity system. Instead of openi
 ## 🚀 Features
 
 -   **📝 Quick Capture:** Add tasks and ideas via simple commands.
+-   **🔴 Priorities:** Mark tasks as urgent with `!` prefix - displayed at the top of the list.
+-   **🏷️ Categories:** Organize with `#hashtags` - filter by category with `/lista #tag`.
 -   **✏️ Edit & Delete:** Full control over your entries - edit or delete tasks and ideas.
 -   **🗑️ Batch Delete:** Remove multiple items at once (e.g., `1,3,5`).
 -   **📜 History:** View completed tasks for motivation.
@@ -21,6 +23,7 @@ FocusBot acts as a "Capture Tool" for your productivity system. Instead of openi
 -   **💾 Local Database:** All data is stored in a lightweight `sqlite3` database (`focus_bot.db`).
 -   **📋 Instant Overview:** View all active tasks and ideas with a single command.
 -   **☀️ Morning Briefing:** Automatic daily report at 08:00 with all active tasks.
+-   **⏰ Reminders:** Set time-based (`15:00`) or relative (`za 30m`) reminders.
 
 ## 🛠️ Prerequisites
 
@@ -55,17 +58,39 @@ FocusBot acts as a "Capture Tool" for your productivity system. Instead of openi
 
 ## 💻 Usage
 
+### Basic Commands
+
 | Command | Description | Example |
 | :--- | :--- | :--- |
-| `/zadanie <text>` | Adds a new task. Interactive mode if no text. | `/zadanie Buy coffee` |
+| `/zadanie <text>` | Adds a new task. Interactive mode if no text. | `/zadanie Kupić mleko` |
 | `/zrobione <id>` | Marks a task as completed. | `/zrobione 1` |
-| `/pomysl <text>` | Saves an idea. | `/pomysl New app logic` |
+| `/pomysl <text>` | Saves an idea. | `/pomysl Nowa funkcja` |
 | `/pomysł <text>` | Alias for idea (supports 'ł'). | `/pomysł Nowy projekt` |
 | `/lista` | Shows all active tasks and ideas with IDs. | `/lista` |
+| `/lista #tag` | Filter by category. | `/lista #dom` |
 | `/usun` | Deletes task or idea. Supports batch: `1,3,5` | `/usun z 1` or `/usun p 2` |
 | `/edytuj` | Edits task or idea content. | `/edytuj` |
 | `/historia` | Shows last 20 completed tasks. | `/historia` |
+| `/przypomnij` | Sets a reminder. | `/przypomnij 15:00 Zadzwonić` |
+| `/przypomnienia` | Shows active reminders. | `/przypomnienia` |
 | `/start` | Welcome message, removes old keyboard. | `/start` |
+
+### Priorities & Categories
+
+| Syntax | Description | Example |
+| :--- | :--- | :--- |
+| `! <text>` | Marks task as **URGENT** (🔴). Displayed at the top. | `/zadanie ! Zapłacić podatki` |
+| `<text> #tag` | Assigns task/idea to a category. | `/zadanie Kupić karmę #dom` |
+| `! <text> #tag` | Combines priority and category. | `/zadanie ! Pilny raport #praca` |
+
+### Reminders
+
+| Syntax | Description | Example |
+| :--- | :--- | :--- |
+| `HH:MM <text>` | Reminder at specific time. | `/przypomnij 15:00 Zadzwonić` |
+| `za Xm <text>` | Reminder in X minutes. | `/przypomnij za 30m Sprawdzić pranie` |
+| `za Xh <text>` | Reminder in X hours. | `/przypomnij za 2h Spotkanie` |
+| `za Xd <text>` | Reminder in X days. | `/przypomnij za 1d Wysłać raport` |
 
 ## 📂 Project Structure
 
@@ -85,6 +110,26 @@ focus_bot/
 
 <details>
 <summary><strong>Click to expand version history</strong></summary>
+
+### v0.8.1 (2025-12-31)
+*   **refactor:** Code cleanup following KISS principles.
+*   **refactor:** Extracted helper functions: `save_task()`, `save_idea()`, `save_reminder()`, `build_list_response()`.
+*   **refactor:** Removed ~50 lines of duplicated code.
+*   **fix:** Moved `import re` to top of file.
+
+### v0.8.0 (2025-12-31)
+*   **feat(core):** Implemented **Reminders** - `/przypomnij` command with time-based and relative formats.
+*   **feat(core):** Added `/przypomnienia` to view active reminders.
+*   **feat(ux):** Supports `15:00`, `za 30m`, `za 2h`, `za 1d` time formats.
+*   **feat(db):** Added `reminders` table with auto-check every 30 seconds.
+
+### v0.7.0 (2025-12-31)
+*   **feat(core):** Implemented **Priorities** - add `!` prefix to mark tasks as urgent (🔴).
+*   **feat(core):** Implemented **Categories** - use `#hashtag` to organize tasks and ideas.
+*   **feat(ux):** Urgent tasks are displayed at the top of the list.
+*   **feat(ux):** `/lista #tag` filters tasks and ideas by category.
+*   **feat(ux):** Available categories shown in `/lista` header.
+*   **feat(db):** Added `priority` and `category` columns to database with auto-migration.
 
 ### v0.6.0 (2025-12-30)
 *   **feat(core):** Implemented `/usun` command to delete tasks and ideas.
