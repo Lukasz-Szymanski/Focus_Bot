@@ -24,6 +24,7 @@ FocusBot acts as a "Capture Tool" for your productivity system. Instead of openi
 -   **📋 Instant Overview:** View all active tasks and ideas with a single command.
 -   **☀️ Morning Briefing:** Automatic daily report at 08:00 with all active tasks.
 -   **⏰ Reminders:** Set time-based (`15:00`) or relative (`za 30m`) reminders.
+-   **🔄 Recurring Reminders:** Schedule repeating reminders (daily, weekdays, weekly, monthly).
 
 ## 🛠️ Prerequisites
 
@@ -73,6 +74,9 @@ FocusBot acts as a "Capture Tool" for your productivity system. Instead of openi
 | `/historia` | Shows last 20 completed tasks. | `/historia` |
 | `/przypomnij` | Sets a reminder. | `/przypomnij 15:00 Zadzwonić` |
 | `/przypomnienia` | Shows active reminders. | `/przypomnienia` |
+| `/cyklicznie` | Creates a recurring reminder. | `/cyklicznie pon-pt 09:00 Standup` |
+| `/cykliczne` | Shows recurring reminders. | `/cykliczne` |
+| `/usun-cykl <id>` | Deletes a recurring reminder. | `/usun-cykl 1` |
 | `/start` | Welcome message, removes old keyboard. | `/start` |
 
 ### Priorities & Categories
@@ -92,6 +96,18 @@ FocusBot acts as a "Capture Tool" for your productivity system. Instead of openi
 | `za Xh <text>` | Reminder in X hours. | `/przypomnij za 2h Spotkanie` |
 | `za Xd <text>` | Reminder in X days. | `/przypomnij za 1d Wysłać raport` |
 
+### Recurring Reminders
+
+| Syntax | Description | Example |
+| :--- | :--- | :--- |
+| `codziennie HH:MM <text>` | Daily reminder at specific time. | `/cyklicznie codziennie 08:00 Poranna kawa` |
+| `pon-pt HH:MM <text>` | Weekdays only (range). | `/cyklicznie pon-pt 09:00 Standup` |
+| `co tydzień <day> HH:MM <text>` | Weekly on specific day. | `/cyklicznie co tydzień pn 10:00 Weekly review` |
+| `pon,śr,pt HH:MM <text>` | Custom days (comma-separated). | `/cyklicznie pon,śr,pt 18:00 Ćwiczenia` |
+| `co miesiąc <day> HH:MM <text>` | Monthly on specific day. | `/cyklicznie co miesiąc 1 09:00 Rachunki` |
+
+**Supported day abbreviations:** `pn/pon`, `wt/wto`, `śr/sr/sro`, `cz/czw`, `pt/pia`, `sb/sob`, `nd/nie`
+
 ## 📂 Project Structure
 
 ```text
@@ -110,6 +126,14 @@ focus_bot/
 
 <details>
 <summary><strong>Click to expand version history</strong></summary>
+
+### v0.9.0 (2026-01-03)
+*   **feat(core):** Implemented **Recurring Reminders** - `/cyklicznie` command with multiple schedule formats.
+*   **feat(core):** Added `/cykliczne` to view active recurring reminders.
+*   **feat(core):** Added `/usun-cykl` to delete recurring reminders.
+*   **feat(ux):** Supports daily, weekday ranges (`pon-pt`), weekly, custom days (`pon,śr,pt`), and monthly schedules.
+*   **feat(ux):** Full Polish day name support with abbreviations.
+*   **feat(db):** Added `recurring_reminders` table with auto-check every 30 seconds.
 
 ### v0.8.1 (2025-12-31)
 *   **refactor:** Code cleanup following KISS principles.
