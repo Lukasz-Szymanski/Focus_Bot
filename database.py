@@ -63,6 +63,20 @@ def init_db():
         )
     ''')
 
+    # Tabela Cyklicznych Przypomnień
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS recurring_reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            content TEXT NOT NULL,
+            schedule_type TEXT NOT NULL,
+            schedule_days TEXT,
+            schedule_time TEXT NOT NULL,
+            next_run TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_active INTEGER DEFAULT 1
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -239,6 +253,71 @@ def delete_reminder(reminder_id: int) -> bool:
     conn.commit()
     conn.close()
     return rows_affected > 0
+
+# --- Cykliczne Przypomnienia ---
+
+def add_recurring_reminder(content: str, schedule_type: str, schedule_days: str | None,
+                           schedule_time: str, next_run: datetime) -> int:
+    """Dodaje cykliczne przypomnienie i zwraca jego ID."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO recurring_reminders (content, schedule_type, schedule_days, schedule_time, next_run)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (content, schedule_type, schedule_days, schedule_time, next_run))
+    reminder_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    return reminder_id
+
+def get_active_recurring_reminders() -> list:
+    """Pobiera aktywne cykliczne przypomnienia."""
+    conn = get_db_connection()
+    reminders = conn.execute(
+        'SELECT * FROM recurring_reminders WHERE is_active = 1 ORDER BY next_run'
+    ).fetchall()
+    conn.close()
+    return reminders
+
+def get_due_recurring_reminders() -> list:
+    """Pobiera cykliczne przypomnienia do wysłania (czas next_run minął)."""
+    conn = get_db_connection()
+    now = datetime.now()
+    reminders = conn.execute(
+        'SELECT * FROM recurring_reminders WHERE is_active = 1 AND next_run <= ? ORDER BY next_run',
+        (now,)
+    ).fetchall()
+    conn.close()
+    return reminders
+
+def update_recurring_reminder_next_run(reminder_id: int, next_run: datetime) -> bool:
+    """Aktualizuje next_run dla cyklicznego przypomnienia."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('UPDATE recurring_reminders SET next_run = ? WHERE id = ?', (next_run, reminder_id))
+    rows_affected = c.rowcount
+    conn.commit()
+    conn.close()
+    return rows_affected > 0
+
+def delete_recurring_reminder(reminder_id: int) -> bool:
+    """Usuwa cykliczne przypomnienie."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('DELETE FROM recurring_reminders WHERE id = ?', (reminder_id,))
+    rows_affected = c.rowcount
+    conn.commit()
+    conn.close()
+    return rows_affected > 0
+
+def get_recurring_reminder_by_id(reminder_id: int):
+    """Pobiera cykliczne przypomnienie po ID."""
+    conn = get_db_connection()
+    reminder = conn.execute(
+        'SELECT * FROM recurring_reminders WHERE id = ?', (reminder_id,)
+    ).fetchone()
+    conn.close()
+    return reminder
 
 # Inicjalizacja przy imporcie (bezpieczne, jeśli plik jest zaimportowany)
 if __name__ == "__main__":
