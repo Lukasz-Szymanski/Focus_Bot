@@ -32,6 +32,8 @@ FocusBot acts as a "Capture Tool" for your productivity system. Instead of openi
 -   A Telegram account
 -   A Bot Token (from @BotFather)
 
+
+
 ## ⚙️ Installation & Setup
 
 1.  **Clone or Navigate to the folder:**
@@ -39,23 +41,33 @@ FocusBot acts as a "Capture Tool" for your productivity system. Instead of openi
     cd focus_bot
     ```
 
-2.  **Install Dependencies:**
-    ```bash
-    pip install python-telegram-bot python-dotenv
-    ```
-
-3.  **Configure Secrets:**
-    Create a `.env` file in the `focus_bot` directory (use `.env.example` as a reference):
+2.  **Configure Secrets:**
+    Create a `.env` file in the root directory (use `.env.example` as a reference):
     ```ini
     TELEGRAM_TOKEN=your_bot_token_here
     MY_CHAT_ID=123456789
     ```
     *(To find your Chat ID, run the bot and send `/start` - it will display your ID in the console).*
 
+### Option A: Standard Running
+
+3.  **Install Dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
 4.  **Run the Bot:**
     ```bash
     python bot.py
     ```
+
+### Option B: Docker Deployment (Recommended for VPS/Servers)
+
+3.  **Start with Docker Compose:**
+    ```bash
+    docker compose up -d
+    ```
+    This will build the container, start the bot in the background, and mount a persistent volume (`focus_bot_data`) to protect your SQLite database (`focus_bot.db`).
 
 ## 💻 Usage
 

@@ -14,6 +14,12 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MY_CHAT_ID = os.getenv("MY_CHAT_ID")
 
+if not TOKEN or not MY_CHAT_ID:
+    raise ValueError(
+        "❌ Błąd: Brak TELEGRAM_TOKEN lub MY_CHAT_ID w pliku .env!\n"
+        "Skopiuj plik .env.example jako .env i uzupełnij poprawne dane."
+    )
+
 # Stałe Stanów (do konwersacji)
 STATE_IDLE = "IDLE"
 STATE_WAITING_TASK = "WAITING_TASK"

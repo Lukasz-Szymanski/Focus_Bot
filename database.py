@@ -1,7 +1,8 @@
+import os
 import sqlite3
 from datetime import datetime
 
-DB_NAME = "focus_bot.db"
+DB_NAME = os.getenv("DATABASE_PATH", "focus_bot.db")
 
 def get_db_connection():
     conn = sqlite3.connect(DB_NAME)

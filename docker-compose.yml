@@ -1,0 +1,15 @@
+services:
+  bot:
+    build: .
+    container_name: focus_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PATH=/app/data/focus_bot.db
+    volumes:
+      - focus_bot_data:/app/data
+
+volumes:
+  focus_bot_data:
+    name: focus_bot_data
