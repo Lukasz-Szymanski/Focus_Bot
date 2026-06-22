@@ -1,5 +1,6 @@
 import os
 import datetime
+from typing import Optional
 from peewee import *
 
 DB_NAME = os.getenv("DATABASE_PATH", "focus_bot.db")
@@ -187,7 +188,7 @@ def delete_reminder(reminder_id: int) -> bool:
 
 # --- Cykliczne Przypomnienia ---
 
-def add_recurring_reminder(content: str, schedule_type: str, schedule_days: str | None,
+def add_recurring_reminder(content: str, schedule_type: str, schedule_days: Optional[str],
                            schedule_time: str, next_run: datetime.datetime) -> int:
     with db.connection_context():
         reminder = RecurringReminder.create(

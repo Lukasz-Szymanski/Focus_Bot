@@ -1,6 +1,7 @@
 import re
 import datetime
 from datetime import timedelta
+from typing import Optional, Tuple, Dict
 
 WEEKDAY_MAP = {
     'pn': 0, 'pon': 0, 'poniedziałek': 0, 'poniedzialek': 0,
@@ -46,7 +47,7 @@ def parse_priority(content: str) -> tuple[str, int]:
         return content[1:].strip(), 1
     return content, 0
 
-def parse_category(content: str) -> tuple[str, str | None]:
+def parse_category(content: str) -> Tuple[str, Optional[str]]:
     """Parsuje kategorię (pierwszy napotkany hashtag #tag) z treści.
 
     Zwraca oczyszczoną treść (bez hashtaga) oraz nazwę kategorii (małymi literami).
@@ -60,7 +61,7 @@ def parse_category(content: str) -> tuple[str, str | None]:
         return clean_content, category
     return content, None
 
-def parse_recurring_schedule(text: str) -> tuple[dict | None, str]:
+def parse_recurring_schedule(text: str) -> Tuple[Optional[Dict], str]:
     """Parsuje harmonogram cyklicznego przypomnienia.
 
     Obsługuje formaty:
@@ -154,7 +155,7 @@ def parse_recurring_schedule(text: str) -> tuple[dict | None, str]:
 
     return None, text
 
-def calculate_next_run(schedule_type: str, days: str | None, time_str: str, now: datetime.datetime | None = None) -> datetime.datetime:
+def calculate_next_run(schedule_type: str, days: Optional[str], time_str: str, now: Optional[datetime.datetime] = None) -> datetime.datetime:
     """Oblicza najbliższy czas kolejnego uruchomienia dla przypomnienia cyklicznego.
 
     Wspiera harmonogramy: daily, weekdays, weekly, custom_days, monthly.
@@ -211,7 +212,7 @@ def calculate_next_run(schedule_type: str, days: str | None, time_str: str, now:
 
     return target_time
 
-def format_schedule_description(schedule_type: str, days: str | None, time_str: str) -> str:
+def format_schedule_description(schedule_type: str, days: Optional[str], time_str: str) -> str:
     """Formatuje harmonogram na czytelny opis słowny w języku polskim."""
     day_names = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb', 'Nd']
 
@@ -234,7 +235,7 @@ def format_schedule_description(schedule_type: str, days: str | None, time_str: 
         return f"co miesiąc ({days}.) o {time_str}"
     return time_str
 
-def parse_reminder_time(text: str, now: datetime.datetime | None = None) -> tuple[datetime.datetime | None, str]:
+def parse_reminder_time(text: str, now: Optional[datetime.datetime] = None) -> Tuple[Optional[datetime.datetime], str]:
     """Parsuje czas przypomnienia z tekstu.
 
     Obsługiwane formaty:
