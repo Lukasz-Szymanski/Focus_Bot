@@ -139,6 +139,11 @@ focus_bot/
 <details>
 <summary><strong>Click to expand version history</strong></summary>
 
+### v1.1.0 (2026-06-22)
+*   **feat(database):** Zmigrowano bazę danych na ORM Peewee oraz wdrożono testy w `tests/test_database.py` (36 testów łącznie).
+*   **feat(stats):** Dodano funkcję tygodniowych statystyk (komenda `/statystyki` i automatyczny scheduler).
+*   **fix(typing):** Poprawiono kompatybilność typowania dla Pythona 3.9 w CI.
+
 ### v1.0.0 (2026-06-22)
 *   **refactor:** Wydzielono całą logikę parsowania, formatowania i obliczania terminów do nowego modułu `utils.py`.
 *   **test:** Stworzono zestaw 23 testów jednostkowych w `tests/test_utils.py`.

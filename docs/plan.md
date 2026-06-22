@@ -39,9 +39,9 @@
 - [x] **Testy jednostkowe:** Wdrożenie testów dla logiki biznesowej w `tests/test_utils.py` (23 testy).
 - [x] **CI/CD:** Konfiguracja potoku GitHub Actions (`.github/workflows/ci.yml`) do automatycznego testowania kodu.
 
-## 🔮 ETAP 7: Przyszłość (Backlog)
+## ETAP 7: Przyszłość (Backlog) ✅
 - [x] **Edycja:** Możliwość poprawienia treści zadania.
 - [x] **Kategorie:** Tagowanie zadań (np. #dom, #praca).
 - [x] **Hosting:** Przeniesienie bota na serwer VPS (działanie 24/7 / Docker).
-- [ ] **Statystyki:** Tygodniowe podsumowanie wykonanych zadań.
-- [ ] **ORM:** Zastąpienie surowego sqlite3 lekkim ORM (np. Peewee lub SQLAlchemy) dla czytelniejszego kodu.
+- [x] **Statystyki:** Tygodniowe podsumowanie wykonanych zadań.
+- [x] **ORM:** Zastąpienie surowego sqlite3 lekkim ORM (np. Peewee lub SQLAlchemy) dla czytelniejszego kodu.
