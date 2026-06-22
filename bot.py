@@ -62,6 +62,35 @@ async def morning_briefing(context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(chat_id=MY_CHAT_ID, text=message, parse_mode="Markdown")
 
+def format_weekly_stats_msg(stats: dict) -> str:
+    """Formatowanie wiadomości ze statystykami tygodniowymi."""
+    msg = "📊 **PODSUMOWANIE TYGODNIA**\n\n"
+    msg += f"✅ Ukończone zadania (7d): **{stats['completed']}**\n"
+    msg += f"➕ Nowe zadania (7d): **{stats['created']}**\n"
+    msg += f"💡 Nowe pomysły (7d): **{stats['new_ideas']}**\n"
+    msg += f"📌 Pozostałe aktywne zadania: **{stats['active']}**\n\n"
+    
+    if stats['completed'] > 0:
+        msg += "💪 Dobra robota! Oby tak dalej!"
+    else:
+        msg += "💤 Spokojny tydzień. Czas na nowe wyzwania!"
+    return msg
+
+async def weekly_report(context: ContextTypes.DEFAULT_TYPE):
+    """Job wysyłający cotygodniowe podsumowanie."""
+    stats = db.get_weekly_stats()
+    message = format_weekly_stats_msg(stats)
+    await context.bot.send_message(chat_id=MY_CHAT_ID, text=message, parse_mode="Markdown")
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Komenda /statystyki - pokazuje statystyki na żądanie."""
+    if not await security_check(update): return
+    context.user_data['state'] = STATE_IDLE
+    
+    stats = db.get_weekly_stats()
+    message = format_weekly_stats_msg(stats)
+    await update.message.reply_text(message, parse_mode="Markdown")
+
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE):
     """Job sprawdzający i wysyłający przypomnienia."""
     reminders = db.get_pending_reminders()
@@ -83,6 +112,7 @@ async def post_init(application: Application):
         BotCommand("przypomnienia", "Pokaż aktywne przypomnienia"),
         BotCommand("cyklicznie", "Ustaw cykliczne przypomnienie"),
         BotCommand("cykliczne", "Pokaż cykliczne przypomnienia"),
+        BotCommand("statystyki", "Pokaż statystyki tygodniowe"),
         BotCommand("start", "Panel startowy")
     ])
 
@@ -93,6 +123,9 @@ async def post_init(application: Application):
         application.job_queue.run_repeating(check_reminders, interval=30, first=5)
         # Sprawdzaj cykliczne przypomnienia co 30 sekund
         application.job_queue.run_repeating(check_recurring_reminders, interval=30, first=10)
+        # Cotygodniowe podsumowanie w niedzielę o 20:00 (6 = niedziela)
+        t_weekly = datetime.time(20, 00)
+        application.job_queue.run_daily(weekly_report, t_weekly, days=(6,), chat_id=MY_CHAT_ID)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await security_check(update): return
@@ -625,6 +658,7 @@ if __name__ == '__main__':
         app.add_handler(CommandHandler('cyklicznie', recurring_remind_command))
         app.add_handler(CommandHandler('cykliczne', recurring_list_command))
         app.add_handler(CommandHandler('usun_cykl', delete_recurring_command))
+        app.add_handler(CommandHandler('statystyki', stats_command))
 
         # Obsługa polskiego /pomysł
         app.add_handler(MessageHandler(filters.Regex(r'^/pomysł'), add_idea_command))
