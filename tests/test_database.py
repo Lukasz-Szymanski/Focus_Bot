@@ -147,3 +147,19 @@ def test_get_due_recurring_reminders():
     due = db.get_due_recurring_reminders()
     assert len(due) == 1
     assert due[0]['content'] == "Przeszłe"
+
+def test_get_weekly_stats():
+    db.add_task("Aktywne")
+    db.add_task("Ukończone")
+    
+    active = db.get_active_tasks()
+    task_id = [t for t in active if t['content'] == "Ukończone"][0]['id']
+    db.mark_task_done(task_id)
+    
+    db.add_idea("Nowy Pomysł")
+    
+    stats = db.get_weekly_stats()
+    assert stats['completed'] == 1
+    assert stats['active'] == 1
+    assert stats['created'] == 2
+    assert stats['new_ideas'] == 1

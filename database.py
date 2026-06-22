@@ -18,6 +18,7 @@ class Task(BaseModel):
     is_done = IntegerField(default=0)
     priority = IntegerField(default=0)
     category = TextField(null=True)
+    completed_at = DateTimeField(null=True)
 
     class Meta:
         table_name = 'tasks'
@@ -59,6 +60,10 @@ def init_db():
     """Inicjalizuje bazę danych i tworzy tabele, jeśli nie istnieją."""
     db.connect(reuse_if_open=True)
     db.create_tables([Task, Idea, Reminder, RecurringReminder])
+    try:
+        db.execute_sql('ALTER TABLE tasks ADD COLUMN completed_at TIMESTAMP')
+    except Exception:
+        pass
     db.close()
 
 def _clean_row(row_dict):
@@ -111,7 +116,7 @@ def get_all_categories():
 def mark_task_done(task_id):
     """Oznacza zadanie jako wykonane."""
     with db.connection_context():
-        rows_affected = Task.update(is_done=1).where(Task.id == task_id).execute()
+        rows_affected = Task.update(is_done=1, completed_at=datetime.datetime.now()).where(Task.id == task_id).execute()
         return rows_affected > 0
 
 def delete_task(task_id):
@@ -155,6 +160,22 @@ def get_idea_by_id(idea_id):
     with db.connection_context():
         row = Idea.select().where(Idea.id == idea_id).dicts().first()
         return _clean_row(row)
+
+def get_weekly_stats() -> dict:
+    """Oblicza statystyki zadań i pomysłów z ostatnich 7 dni."""
+    with db.connection_context():
+        since_date = datetime.datetime.now() - datetime.timedelta(days=7)
+        completed_count = Task.select().where((Task.is_done == 1) & (Task.completed_at >= since_date)).count()
+        active_count = Task.select().where(Task.is_done == 0).count()
+        created_count = Task.select().where(Task.created_at >= since_date).count()
+        new_ideas_count = Idea.select().where(Idea.created_at >= since_date).count()
+        
+        return {
+            'completed': completed_count,
+            'active': active_count,
+            'created': created_count,
+            'new_ideas': new_ideas_count
+        }
 
 
 # --- Przypomnienia ---
