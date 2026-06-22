@@ -34,8 +34,14 @@
 
 ---
 
-## 🔮 ETAP 6: Przyszłość (Backlog)
-- [ ] **Edycja:** Możliwość poprawienia treści zadania.
-- [ ] **Kategorie:** Tagowanie zadań (np. #dom, #praca).
-- [ ] **Hosting:** Przeniesienie bota na serwer VPS (działanie 24/7).
+## ETAP 6: Profesjonalizacja (Refaktoryzacja i Testy) ✅
+- [x] **Refaktoryzacja:** Wydzielenie parserów i funkcji pomocniczych do `utils.py` w celu odchudzenia `bot.py`.
+- [x] **Testy jednostkowe:** Wdrożenie testów dla logiki biznesowej w `tests/test_utils.py` (23 testy).
+- [x] **CI/CD:** Konfiguracja potoku GitHub Actions (`.github/workflows/ci.yml`) do automatycznego testowania kodu.
+
+## 🔮 ETAP 7: Przyszłość (Backlog)
+- [x] **Edycja:** Możliwość poprawienia treści zadania.
+- [x] **Kategorie:** Tagowanie zadań (np. #dom, #praca).
+- [x] **Hosting:** Przeniesienie bota na serwer VPS (działanie 24/7 / Docker).
 - [ ] **Statystyki:** Tygodniowe podsumowanie wykonanych zadań.
+- [ ] **ORM:** Zastąpienie surowego sqlite3 lekkim ORM (np. Peewee lub SQLAlchemy) dla czytelniejszego kodu.

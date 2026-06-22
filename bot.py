@@ -8,6 +8,7 @@ from telegram import Update, BotCommand, ReplyKeyboardRemove
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters, Application
 
 import database as db
+import utils
 
 # Konfiguracja
 load_dotenv()
@@ -47,21 +48,7 @@ async def security_check(update: Update) -> bool:
         return False
     return True
 
-def format_task_simple(task) -> str:
-    """Formatuje zadanie z uwzględnieniem priorytetu i kategorii."""
-    priority = task['priority'] if 'priority' in task.keys() else 0
-    category = task['category'] if 'category' in task.keys() and task['category'] else None
-    cat_suffix = f" `#{category}`" if category else ""
-
-    if priority:
-        return f"🔴 `{task['id']}`. **{task['content']}**{cat_suffix}"
-    return f"`{task['id']}`. {task['content']}{cat_suffix}"
-
-def format_idea_simple(idea) -> str:
-    """Formatuje pomysł z uwzględnieniem kategorii."""
-    category = idea['category'] if 'category' in idea.keys() and idea['category'] else None
-    cat_suffix = f" `#{category}`" if category else ""
-    return f"`{idea['id']}`. {idea['content']}{cat_suffix}"
+# Funkcje formatowania format_task_simple i format_idea_simple zostały przeniesione do utils.py
 
 async def morning_briefing(context: ContextTypes.DEFAULT_TYPE):
     tasks = db.get_active_tasks()
@@ -70,7 +57,7 @@ async def morning_briefing(context: ContextTypes.DEFAULT_TYPE):
     else:
         message = f"☀️ **PORANNY RAPORT**\n\nMasz {len(tasks)} zadań:\n"
         for t in tasks:
-            message += format_task_simple(t) + "\n"
+            message += utils.format_task_simple(t) + "\n"
         message += "\nUżyj `/zrobione <nr>`, aby odhaczyć."
 
     await context.bot.send_message(chat_id=MY_CHAT_ID, text=message, parse_mode="Markdown")
@@ -131,269 +118,14 @@ def extract_content(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
             return parts[1]
     return ''
 
-def parse_priority(content: str) -> tuple[str, int]:
-    """Parsuje priorytet z treści zadania.
-
-    '! Zapłacić podatki' -> ('Zapłacić podatki', 1)
-    'Kupić mleko' -> ('Kupić mleko', 0)
-    """
-    content = content.strip()
-    if content.startswith('!'):
-        return content[1:].strip(), 1
-    return content, 0
-
-def parse_category(content: str) -> tuple[str, str | None]:
-    """Parsuje kategorię (hashtag) z treści.
-
-    'Kupić karmę #dom' -> ('Kupić karmę', 'dom')
-    'Kupić mleko' -> ('Kupić mleko', None)
-    """
-    match = re.search(r'#(\w+)', content)
-    if match:
-        category = match.group(1).lower()
-        # Usuń hashtag z treści
-        clean_content = re.sub(r'\s*#\w+', '', content).strip()
-        return clean_content, category
-    return content, None
-
-WEEKDAY_MAP = {
-    'pn': 0, 'pon': 0, 'poniedziałek': 0, 'poniedzialek': 0,
-    'wt': 1, 'wto': 1, 'wtorek': 1,
-    'śr': 2, 'sr': 2, 'sro': 2, 'środa': 2, 'sroda': 2,
-    'cz': 3, 'czw': 3, 'czwartek': 3,
-    'pt': 4, 'pia': 4, 'piątek': 4, 'piatek': 4,
-    'sb': 5, 'sob': 5, 'sobota': 5,
-    'nd': 6, 'nie': 6, 'niedziela': 6,
-}
-
-def parse_recurring_schedule(text: str) -> tuple[dict | None, str]:
-    """Parsuje harmonogram cyklicznego przypomnienia.
-
-    Obsługiwane formaty:
-    - 'codziennie 08:00 Poranny raport' -> (schedule_info, 'Poranny raport')
-    - 'pon-pt 09:00 Standup' -> (schedule_info, 'Standup')
-    - 'co tydzień pn 10:00 Weekly' -> (schedule_info, 'Weekly')
-    - 'pon,śr,pt 15:00 Ćwiczenia' -> (schedule_info, 'Ćwiczenia')
-    - 'co miesiąc 1 09:00 Rachunki' -> (schedule_info, 'Rachunki')
-
-    Zwraca: (schedule_info, content) lub (None, error_message)
-    schedule_info = {
-        'type': 'daily' | 'weekdays' | 'weekly' | 'custom_days' | 'monthly',
-        'days': str | None,  # np. '0,1,2,3,4' lub '1' (dzień miesiąca)
-        'time': 'HH:MM'
-    }
-    """
-    text = text.strip()
-
-    # Format: "codziennie HH:MM treść"
-    daily_match = re.match(r'^codziennie\s+(\d{1,2}):(\d{2})\s+(.+)$', text, re.IGNORECASE)
-    if daily_match:
-        hour, minute, content = int(daily_match.group(1)), int(daily_match.group(2)), daily_match.group(3)
-        if 0 <= hour <= 23 and 0 <= minute <= 59:
-            return {
-                'type': 'daily',
-                'days': None,
-                'time': f"{hour:02d}:{minute:02d}"
-            }, content.strip()
-
-    # Format: "pon-pt HH:MM treść" (zakres dni)
-    range_match = re.match(r'^(\w+)-(\w+)\s+(\d{1,2}):(\d{2})\s+(.+)$', text, re.IGNORECASE)
-    if range_match:
-        start_day = range_match.group(1).lower()
-        end_day = range_match.group(2).lower()
-        hour, minute = int(range_match.group(3)), int(range_match.group(4))
-        content = range_match.group(5)
-
-        if start_day in WEEKDAY_MAP and end_day in WEEKDAY_MAP and 0 <= hour <= 23 and 0 <= minute <= 59:
-            start_idx = WEEKDAY_MAP[start_day]
-            end_idx = WEEKDAY_MAP[end_day]
-            if start_idx <= end_idx:
-                days = ','.join(str(d) for d in range(start_idx, end_idx + 1))
-            else:
-                days = ','.join(str(d) for d in list(range(start_idx, 7)) + list(range(0, end_idx + 1)))
-
-            return {
-                'type': 'weekdays',
-                'days': days,
-                'time': f"{hour:02d}:{minute:02d}"
-            }, content.strip()
-
-    # Format: "co tydzień <dzień> HH:MM treść"
-    weekly_match = re.match(r'^co\s+tydzie[nń]\s+(\w+)\s+(\d{1,2}):(\d{2})\s+(.+)$', text, re.IGNORECASE)
-    if weekly_match:
-        day = weekly_match.group(1).lower()
-        hour, minute = int(weekly_match.group(2)), int(weekly_match.group(3))
-        content = weekly_match.group(4)
-
-        if day in WEEKDAY_MAP and 0 <= hour <= 23 and 0 <= minute <= 59:
-            return {
-                'type': 'weekly',
-                'days': str(WEEKDAY_MAP[day]),
-                'time': f"{hour:02d}:{minute:02d}"
-            }, content.strip()
-
-    # Format: "pon,śr,pt HH:MM treść" (lista dni)
-    list_match = re.match(r'^([\w,]+)\s+(\d{1,2}):(\d{2})\s+(.+)$', text, re.IGNORECASE)
-    if list_match:
-        days_str = list_match.group(1).lower()
-        hour, minute = int(list_match.group(2)), int(list_match.group(3))
-        content = list_match.group(4)
-
-        day_parts = [d.strip() for d in days_str.split(',')]
-        if len(day_parts) > 1 and all(d in WEEKDAY_MAP for d in day_parts):
-            if 0 <= hour <= 23 and 0 <= minute <= 59:
-                days = ','.join(str(WEEKDAY_MAP[d]) for d in day_parts)
-                return {
-                    'type': 'custom_days',
-                    'days': days,
-                    'time': f"{hour:02d}:{minute:02d}"
-                }, content.strip()
-
-    # Format: "co miesiąc <dzień> HH:MM treść"
-    monthly_match = re.match(r'^co\s+miesi[aą]c\s+(\d{1,2})\s+(\d{1,2}):(\d{2})\s+(.+)$', text, re.IGNORECASE)
-    if monthly_match:
-        day_of_month = int(monthly_match.group(1))
-        hour, minute = int(monthly_match.group(2)), int(monthly_match.group(3))
-        content = monthly_match.group(4)
-
-        if 1 <= day_of_month <= 31 and 0 <= hour <= 23 and 0 <= minute <= 59:
-            return {
-                'type': 'monthly',
-                'days': str(day_of_month),
-                'time': f"{hour:02d}:{minute:02d}"
-            }, content.strip()
-
-    return None, text
-
-def calculate_next_run(schedule_type: str, days: str | None, time_str: str) -> datetime.datetime:
-    """Oblicza następny czas uruchomienia dla cyklicznego przypomnienia."""
-    now = datetime.datetime.now()
-    hour, minute = map(int, time_str.split(':'))
-    target_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-
-    if schedule_type == 'daily':
-        if target_time <= now:
-            target_time += timedelta(days=1)
-        return target_time
-
-    elif schedule_type in ('weekdays', 'weekly', 'custom_days'):
-        allowed_days = [int(d) for d in days.split(',')]
-        current_weekday = now.weekday()
-
-        for i in range(8):  # Sprawdź do 7 dni w przód
-            check_date = now + timedelta(days=i)
-            if check_date.weekday() in allowed_days:
-                candidate = check_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
-                if candidate > now:
-                    return candidate
-
-        # Fallback - pierwszy dozwolony dzień w następnym tygodniu
-        next_week = now + timedelta(days=7)
-        return next_week.replace(hour=hour, minute=minute, second=0, microsecond=0)
-
-    elif schedule_type == 'monthly':
-        day_of_month = int(days)
-        # Spróbuj ten miesiąc
-        try:
-            target = now.replace(day=day_of_month, hour=hour, minute=minute, second=0, microsecond=0)
-            if target > now:
-                return target
-        except ValueError:
-            pass  # Dzień nie istnieje w tym miesiącu
-
-        # Następny miesiąc
-        if now.month == 12:
-            next_month = now.replace(year=now.year + 1, month=1, day=1)
-        else:
-            next_month = now.replace(month=now.month + 1, day=1)
-
-        try:
-            return next_month.replace(day=day_of_month, hour=hour, minute=minute, second=0, microsecond=0)
-        except ValueError:
-            # Jeśli dzień nie istnieje, użyj ostatniego dnia miesiąca
-            if next_month.month == 12:
-                last_day = (next_month.replace(year=next_month.year + 1, month=1, day=1) - timedelta(days=1)).day
-            else:
-                last_day = (next_month.replace(month=next_month.month + 1, day=1) - timedelta(days=1)).day
-            return next_month.replace(day=min(day_of_month, last_day), hour=hour, minute=minute, second=0, microsecond=0)
-
-    return target_time
-
-def format_schedule_description(schedule_type: str, days: str | None, time_str: str) -> str:
-    """Formatuje opis harmonogramu do wyświetlenia użytkownikowi."""
-    day_names = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb', 'Nd']
-
-    if schedule_type == 'daily':
-        return f"codziennie o {time_str}"
-    elif schedule_type == 'weekdays':
-        day_indices = [int(d) for d in days.split(',')]
-        if day_indices == [0, 1, 2, 3, 4]:
-            return f"Pn-Pt o {time_str}"
-        day_str = ', '.join(day_names[d] for d in day_indices)
-        return f"{day_str} o {time_str}"
-    elif schedule_type == 'weekly':
-        day_idx = int(days)
-        return f"co tydzień ({day_names[day_idx]}) o {time_str}"
-    elif schedule_type == 'custom_days':
-        day_indices = [int(d) for d in days.split(',')]
-        day_str = ', '.join(day_names[d] for d in day_indices)
-        return f"{day_str} o {time_str}"
-    elif schedule_type == 'monthly':
-        return f"co miesiąc ({days}.) o {time_str}"
-    return time_str
-
-def parse_reminder_time(text: str) -> tuple[datetime.datetime | None, str]:
-    """Parsuje czas przypomnienia z tekstu.
-
-    Obsługiwane formaty:
-    - '15:00 Zadzwonić' -> (datetime z godziną 15:00, 'Zadzwonić')
-    - 'za 30m Sprawdzić' -> (datetime za 30 minut, 'Sprawdzić')
-    - 'za 2h Spotkanie' -> (datetime za 2 godziny, 'Spotkanie')
-    - 'za 1d Raport' -> (datetime za 1 dzień, 'Raport')
-    """
-    text = text.strip()
-    now = datetime.datetime.now()
-
-    # Format: "za Xm/h/d treść"
-    relative_match = re.match(r'^za\s+(\d+)\s*(m|min|h|g|d|dni?)\s+(.+)$', text, re.IGNORECASE)
-    if relative_match:
-        amount = int(relative_match.group(1))
-        unit = relative_match.group(2).lower()
-        content = relative_match.group(3).strip()
-
-        if unit in ('m', 'min'):
-            remind_at = now + timedelta(minutes=amount)
-        elif unit in ('h', 'g'):
-            remind_at = now + timedelta(hours=amount)
-        elif unit in ('d', 'dn', 'dni'):
-            remind_at = now + timedelta(days=amount)
-        else:
-            return None, text
-
-        return remind_at, content
-
-    # Format: "HH:MM treść"
-    time_match = re.match(r'^(\d{1,2}):(\d{2})\s+(.+)$', text)
-    if time_match:
-        hour = int(time_match.group(1))
-        minute = int(time_match.group(2))
-        content = time_match.group(3).strip()
-
-        if 0 <= hour <= 23 and 0 <= minute <= 59:
-            remind_at = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            # Jeśli godzina już minęła, ustaw na jutro
-            if remind_at <= now:
-                remind_at += timedelta(days=1)
-            return remind_at, content
-
-    return None, text
+# Funkcje pomocnicze parsowania i harmonogramowania zostały przeniesione do utils.py
 
 # --- Funkcje pomocnicze (DRY) ---
 
 def save_task(content: str) -> tuple[str, str]:
     """Parsuje i zapisuje zadanie. Zwraca (prefix, suffix) do odpowiedzi."""
-    task_content, priority = parse_priority(content)
-    task_content, category = parse_category(task_content)
+    task_content, priority = utils.parse_priority(content)
+    task_content, category = utils.parse_category(task_content)
     db.add_task(task_content, priority, category)
     prefix = "🔴 PILNE: " if priority else "✅ Dodano: "
     suffix = f" `#{category}`" if category else ""
@@ -401,14 +133,14 @@ def save_task(content: str) -> tuple[str, str]:
 
 def save_idea(content: str) -> str:
     """Parsuje i zapisuje pomysł. Zwraca tekst odpowiedzi."""
-    idea_content, category = parse_category(content)
+    idea_content, category = utils.parse_category(content)
     db.add_idea(idea_content, category)
     suffix = f" `#{category}`" if category else ""
     return f"💡 Zapisano: {idea_content}{suffix}"
 
 def save_reminder(content: str) -> tuple[bool, str]:
     """Parsuje i zapisuje przypomnienie. Zwraca (sukces, tekst odpowiedzi)."""
-    remind_at, reminder_content = parse_reminder_time(content)
+    remind_at, reminder_content = utils.parse_reminder_time(content)
     if remind_at:
         db.add_reminder(reminder_content, remind_at)
         time_str = remind_at.strftime("%H:%M")
@@ -422,27 +154,7 @@ def save_reminder(content: str) -> tuple[bool, str]:
         "• `za 2h Spotkanie`"
     )
 
-def build_list_response(header: str, tasks: list, ideas: list, show_prompt: bool = False) -> str:
-    """Buduje odpowiedź z listą zadań i pomysłów."""
-    response = f"{header}\n\n"
-    response += "📌 **ZADANIA:**\n"
-    if tasks:
-        for t in tasks:
-            response += format_task_simple(t) + "\n"
-    else:
-        response += "(pusto)\n"
-
-    response += "\n💡 **POMYSŁY:**\n"
-    if ideas:
-        for i in ideas:
-            response += format_idea_simple(i) + "\n"
-    else:
-        response += "(pusto)\n"
-
-    if show_prompt:
-        response += "\n➡️ Wpisz `z` (zadanie) lub `p` (pomysł):"
-
-    return response
+# Funkcja build_list_response została przeniesiona do utils.py
 
 async def add_task_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await security_check(update): return
@@ -649,7 +361,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     content = extract_content(update, context)
     category = None
     if content:
-        _, category = parse_category(content)
+        _, category = utils.parse_category(content)
         if not category and content.startswith('#'):
             category = content[1:].lower().strip()
 
@@ -664,7 +376,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if categories:
             header += f"\n\n🏷️ Kategorie: {', '.join([f'`#{c}`' for c in categories])}"
 
-    response = build_list_response(header, tasks, ideas)
+    response = utils.build_list_response(header, tasks, ideas)
     await update.message.reply_text(response, parse_mode="Markdown")
 
 async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -690,7 +402,7 @@ async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         tasks = db.get_active_tasks()
         ideas = db.get_ideas()
-        response = build_list_response("🗑️ **CO CHCESZ USUNĄĆ?**", tasks, ideas, show_prompt=True)
+        response = utils.build_list_response("🗑️ **CO CHCESZ USUNĄĆ?**", tasks, ideas, show_prompt=True)
         context.user_data['state'] = STATE_WAITING_DELETE_TYPE
         await update.message.reply_text(response, parse_mode="Markdown")
 
@@ -700,7 +412,7 @@ async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     tasks = db.get_active_tasks()
     ideas = db.get_ideas()
-    response = build_list_response("✏️ **CO CHCESZ EDYTOWAĆ?**", tasks, ideas, show_prompt=True)
+    response = utils.build_list_response("✏️ **CO CHCESZ EDYTOWAĆ?**", tasks, ideas, show_prompt=True)
     context.user_data['state'] = STATE_WAITING_EDIT_TYPE
     await update.message.reply_text(response, parse_mode="Markdown")
 
@@ -772,9 +484,9 @@ async def recurring_remind_command(update: Update, context: ContextTypes.DEFAULT
     content = extract_content(update, context)
 
     if content:
-        schedule_info, reminder_content = parse_recurring_schedule(content)
+        schedule_info, reminder_content = utils.parse_recurring_schedule(content)
         if schedule_info:
-            next_run = calculate_next_run(
+            next_run = utils.calculate_next_run(
                 schedule_info['type'],
                 schedule_info['days'],
                 schedule_info['time']
@@ -786,7 +498,7 @@ async def recurring_remind_command(update: Update, context: ContextTypes.DEFAULT
                 schedule_info['time'],
                 next_run
             )
-            schedule_desc = format_schedule_description(
+            schedule_desc = utils.format_schedule_description(
                 schedule_info['type'],
                 schedule_info['days'],
                 schedule_info['time']
@@ -839,7 +551,7 @@ async def recurring_list_command(update: Update, context: ContextTypes.DEFAULT_T
 
     response = "🔄 **CYKLICZNE PRZYPOMNIENIA**\n\n"
     for r in reminders:
-        schedule_desc = format_schedule_description(
+        schedule_desc = utils.format_schedule_description(
             r['schedule_type'],
             r['schedule_days'],
             r['schedule_time']
@@ -877,7 +589,7 @@ async def check_recurring_reminders(context: ContextTypes.DEFAULT_TYPE):
     """Job sprawdzający i wysyłający cykliczne przypomnienia."""
     reminders = db.get_due_recurring_reminders()
     for r in reminders:
-        schedule_desc = format_schedule_description(
+        schedule_desc = utils.format_schedule_description(
             r['schedule_type'],
             r['schedule_days'],
             r['schedule_time']
@@ -886,7 +598,7 @@ async def check_recurring_reminders(context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=MY_CHAT_ID, text=message, parse_mode="Markdown")
 
         # Oblicz następny czas uruchomienia
-        next_run = calculate_next_run(
+        next_run = utils.calculate_next_run(
             r['schedule_type'],
             r['schedule_days'],
             r['schedule_time']

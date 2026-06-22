@@ -139,6 +139,11 @@ focus_bot/
 <details>
 <summary><strong>Click to expand version history</strong></summary>
 
+### v1.0.0 (2026-06-22)
+*   **refactor:** Wydzielono całą logikę parsowania, formatowania i obliczania terminów do nowego modułu `utils.py`.
+*   **test:** Stworzono zestaw 23 testów jednostkowych w `tests/test_utils.py`.
+*   **ci:** Skonfigurowano automatyczny potok GitHub Actions do uruchamiania testów.
+
 ### v0.9.0 (2026-01-03)
 *   **feat(core):** Implemented **Recurring Reminders** - `/cyklicznie` command with multiple schedule formats.
 *   **feat(core):** Added `/cykliczne` to view active recurring reminders.
