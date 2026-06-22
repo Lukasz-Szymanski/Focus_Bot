@@ -301,3 +301,5 @@ def build_list_response(header: str, tasks: list, ideas: list, show_prompt: bool
         response += "\n➡️ Wpisz `z` (zadanie) lub `p` (pomysł):"
 
     return response
+
+# Moduł pomocniczy FocusBot v1.0.0
